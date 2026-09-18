@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f6f4a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Italiano">
+  <title>Survival Italian</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1 id="screen-title">Review</h1>
+    <button id="settings-btn" class="icon-btn" aria-label="Settings">⚙︎</button>
+  </header>
+
+  <main id="app">
+    <!-- Review screen -->
+    <section id="screen-review" class="screen active">
+      <div id="review-stats" class="stats"></div>
+      <div id="review-area"></div>
+    </section>
+
+    <!-- Phrases screen -->
+    <section id="screen-phrases" class="screen">
+      <div id="category-list" class="category-list"></div>
+      <div id="phrase-list" class="phrase-list"></div>
+    </section>
+
+    <!-- Conversations screen -->
+    <section id="screen-convos" class="screen">
+      <div id="convo-list" class="convo-list"></div>
+      <div id="convo-detail" class="convo-detail"></div>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button class="tab active" data-screen="review"><span class="tab-icon">🔁</span>Review<span id="due-badge" class="badge" hidden></span></button>
+    <button class="tab" data-screen="phrases"><span class="tab-icon">📖</span>Phrases</button>
+    <button class="tab" data-screen="convos"><span class="tab-icon">💬</span>Talk</button>
+  </nav>
+
+  <!-- Settings sheet -->
+  <div id="settings" class="sheet" hidden>
+    <div class="sheet-body">
+      <h2>Settings</h2>
+      <label class="row">
+        <span>Card front</span>
+        <select id="opt-direction">
+          <option value="en">English → Italian</option>
+          <option value="it">Italian → English</option>
+          <option value="mix">Mixed</option>
+        </select>
+      </label>
+      <label class="row">
+        <span>New cards per day</span>
+        <select id="opt-newperday">
+          <option>5</option><option>10</option><option>15</option><option>20</option><option>30</option>
+        </select>
+      </label>
+      <label class="row">
+        <span>Auto-play audio on reveal</span>
+        <input type="checkbox" id="opt-autoplay">
+      </label>
+      <label class="row">
+        <span>Speech rate</span>
+        <select id="opt-rate">
+          <option value="0.7">Slow</option>
+          <option value="0.85">Normal</option>
+          <option value="1">Fast</option>
+        </select>
+      </label>
+      <label class="row">
+        <span>Voice</span>
+        <select id="opt-voice"></select>
+      </label>
+      <p class="muted" id="voice-status"></p>
+      <button id="reset-progress" class="danger">Reset all progress</button>
+      <button id="close-settings" class="primary">Done</button>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

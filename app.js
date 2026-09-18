@@ -1,0 +1,388 @@
+/* Survival Italian — SRS review, phrase library, conversations, TTS. */
+(() => {
+  "use strict";
+
+  // ---------- Helpers ----------
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  function relTime(ts) {
+    const diff = ts - Date.now();
+    const m = Math.round(diff / 60000);
+    if (m < 60) return `in ${Math.max(1, m)} min`;
+    const h = Math.round(m / 60);
+    if (h < 36) return `in ${h} h`;
+    const d = Math.round(h / 24);
+    return `in ${d} day${d === 1 ? "" : "s"}`;
+  }
+  let toastTimer;
+  function toast(msg) {
+    let el = $("#toast");
+    if (!el) {
+      el = document.createElement("div"); el.id = "toast";
+      el.style.cssText = "position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:20";
+      document.body.appendChild(el);
+    }
+    el.textContent = msg; el.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.hidden = true, 2500);
+  }
+
+  // ---------- Storage ----------
+  const LS_PROGRESS = "si.progress.v1";
+  const LS_SETTINGS = "si.settings.v1";
+  const DAY = 24 * 60 * 60 * 1000;
+
+  const defaults = { direction: "en", newPerDay: 10, autoplay: true, rate: 0.85, voice: "" };
+  let settings = load(LS_SETTINGS, defaults);
+  // progress: { cards: { id: {ease, interval, due, reps, lapses} }, newLog: { "YYYY-MM-DD": n } }
+  let progress = load(LS_PROGRESS, { cards: {}, newLog: {} });
+
+  function load(key, fallback) {
+    try { const v = JSON.parse(localStorage.getItem(key)); return v ? { ...fallback, ...v } : { ...fallback }; }
+    catch { return { ...fallback }; }
+  }
+  function save() {
+    try {
+      localStorage.setItem(LS_PROGRESS, JSON.stringify(progress));
+      localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
+    } catch { /* private mode: progress just won't persist */ }
+  }
+  const todayKey = () => new Date().toISOString().slice(0, 10);
+  const catById = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]));
+  const phraseById = Object.fromEntries(PHRASES.map((p) => [p.id, p]));
+
+  // ---------- TTS ----------
+  const tts = {
+    voices: [],
+    load() {
+      if (!("speechSynthesis" in window)) return;
+      this.voices = speechSynthesis.getVoices().filter((v) => /^it([-_]|$)/i.test(v.lang));
+      fillVoiceSelect();
+    },
+    pick() {
+      if (settings.voice) {
+        const v = this.voices.find((v) => v.name === settings.voice);
+        if (v) return v;
+      }
+      // Prefer higher-quality / well-known voices when present.
+      const pref = [/siri/i, /premium/i, /enhanced/i, /google/i, /alice/i, /federica/i, /luca/i, /elsa/i];
+      for (const re of pref) { const v = this.voices.find((v) => re.test(v.name)); if (v) return v; }
+      return this.voices[0] || null;
+    },
+    speak(text, { onend, onstart } = {}) {
+      if (!("speechSynthesis" in window)) { toast("No speech support in this browser"); return; }
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "it-IT";
+      const v = this.pick();
+      if (v) u.voice = v;
+      u.rate = Number(settings.rate) || 0.85;
+      if (onstart) u.onstart = onstart;
+      if (onend) { u.onend = onend; u.onerror = onend; }
+      speechSynthesis.speak(u);
+    },
+    stop() { if ("speechSynthesis" in window) speechSynthesis.cancel(); },
+  };
+  if ("speechSynthesis" in window) {
+    tts.load();
+    speechSynthesis.onvoiceschanged = () => tts.load();
+  }
+
+  // ---------- SRS (SM-2 flavoured) ----------
+  function cardState(id) {
+    return progress.cards[id] || null;
+  }
+  function isDue(id, now = Date.now()) {
+    const s = cardState(id);
+    return s && s.due <= now;
+  }
+  function newAllowedToday() {
+    return Math.max(0, Number(settings.newPerDay) - (progress.newLog[todayKey()] || 0));
+  }
+  function grade(id, g) {
+    // g: 0 again, 1 hard, 2 good, 3 easy
+    const now = Date.now();
+    let s = cardState(id);
+    if (!s) {
+      s = { ease: 2.5, interval: 0, due: now, reps: 0, lapses: 0 };
+      progress.newLog[todayKey()] = (progress.newLog[todayKey()] || 0) + 1;
+    }
+    if (g === 0) {
+      s.reps = 0; s.lapses += 1; s.interval = 0;
+      s.ease = Math.max(1.3, s.ease - 0.2);
+      s.due = now + 10 * 60 * 1000; // see it again in ~10 min (or this session)
+    } else {
+      if (s.reps === 0) s.interval = g === 1 ? 1 : g === 2 ? 1 : 3;
+      else if (s.reps === 1) s.interval = g === 1 ? 2 : g === 2 ? 4 : 7;
+      else s.interval = Math.round(s.interval * (g === 1 ? 1.2 : g === 2 ? s.ease : s.ease * 1.4));
+      s.interval = Math.max(1, s.interval);
+      s.ease = Math.max(1.3, s.ease + (g === 1 ? -0.15 : g === 3 ? 0.15 : 0));
+      s.reps += 1;
+      s.due = now + s.interval * DAY;
+    }
+    progress.cards[id] = s;
+    save();
+  }
+  function intervalLabel(id, g) {
+    const s = cardState(id);
+    if (g === 0) return "10 min";
+    let iv;
+    if (!s || s.reps === 0) iv = g === 1 ? 1 : g === 2 ? 1 : 3;
+    else if (s.reps === 1) iv = g === 1 ? 2 : g === 2 ? 4 : 7;
+    else iv = Math.round(s.interval * (g === 1 ? 1.2 : g === 2 ? s.ease : s.ease * 1.4));
+    iv = Math.max(1, iv);
+    return iv === 1 ? "1 day" : iv < 30 ? `${iv} days` : `${Math.round(iv / 30)} mo`;
+  }
+
+  // Build today's queue: due reviews first (oldest due first), then new cards in content order.
+  function buildQueue() {
+    const now = Date.now();
+    const due = PHRASES.filter((p) => isDue(p.id, now))
+      .sort((a, b) => cardState(a.id).due - cardState(b.id).due);
+    const fresh = PHRASES.filter((p) => !cardState(p.id)).slice(0, newAllowedToday());
+    return [...due, ...fresh];
+  }
+
+  // ---------- Review UI ----------
+  let queue = [];
+  let current = null;
+  let revealed = false;
+  let frontLang = "en";
+
+  function renderStats() {
+    const now = Date.now();
+    const due = PHRASES.filter((p) => isDue(p.id, now)).length;
+    const learned = Object.keys(progress.cards).length;
+    const fresh = Math.min(newAllowedToday(), PHRASES.length - learned);
+    $("#review-stats").innerHTML = `
+      <div class="stat due"><b>${due}</b><span>Due</span></div>
+      <div class="stat new"><b>${fresh}</b><span>New today</span></div>
+      <div class="stat learned"><b>${learned}</b><span>Seen</span></div>
+      <div class="stat"><b>${PHRASES.length}</b><span>Total</span></div>`;
+    const badge = $("#due-badge");
+    badge.hidden = due === 0;
+    badge.textContent = due;
+  }
+
+  function startReview() {
+    queue = buildQueue();
+    nextCard();
+  }
+  function nextCard() {
+    renderStats();
+    current = queue.shift() || null;
+    revealed = false;
+    if (!current) { renderEmpty(); return; }
+    frontLang = settings.direction === "mix" ? (Math.random() < 0.5 ? "en" : "it") : settings.direction;
+    renderCard();
+  }
+  function renderEmpty() {
+    const learned = Object.keys(progress.cards).length;
+    const nextDue = Object.values(progress.cards).map((s) => s.due).filter((d) => d > Date.now()).sort()[0];
+    const when = nextDue ? relTime(nextDue) : "—";
+    $("#review-area").innerHTML = `
+      <div class="empty">
+        <h3>All caught up 🇮🇹</h3>
+        <p>${learned === 0 ? "Tap below to start learning." : `Next card due ${when}.`}</p>
+        ${learned < PHRASES.length ? `<button class="secondary" id="learn-more">Learn 5 extra new cards</button>` : ""}
+        <p class="muted" style="margin-top:20px">Or browse the Phrases and Talk tabs to practise with audio.</p>
+      </div>`;
+    const btn = $("#learn-more");
+    if (btn) btn.onclick = () => {
+      queue = PHRASES.filter((p) => !cardState(p.id)).slice(0, 5);
+      // Don't count bonus cards against the daily allowance.
+      progress.newLog[todayKey()] = Math.max(0, (progress.newLog[todayKey()] || 0) - 5);
+      nextCard();
+    };
+  }
+  function renderCard() {
+    const p = current;
+    const isNew = !cardState(p.id);
+    const front = frontLang === "en" ? p.en : p.it;
+    const back = frontLang === "en" ? p.it : p.en;
+    const cat = catById[p.cat];
+    $("#review-area").innerHTML = `
+      <div class="card ${isNew ? "new-card" : ""}" id="card">
+        <div class="cat-tag">${cat.emoji} ${cat.name}</div>
+        <div class="label">${frontLang === "en" ? "Say in Italian" : "What does it mean?"}</div>
+        <div class="front">${esc(front)}</div>
+        ${frontLang === "it" ? `<button class="play-btn small" data-say="${esc(p.it)}">🔊 Listen</button>` : ""}
+        ${revealed ? `
+          <div class="back">${esc(back)}</div>
+          <button class="play-btn" data-say="${esc(p.it)}">🔊 Play</button>
+          ${p.note ? `<div class="note">${esc(p.note)}</div>` : ""}
+        ` : `<div class="hint">Tap to reveal</div>`}
+      </div>
+      ${revealed ? `
+      <div class="grades">
+        <button class="again" data-g="0">Again<small>${intervalLabel(p.id, 0)}</small></button>
+        <button class="hard" data-g="1">Hard<small>${intervalLabel(p.id, 1)}</small></button>
+        <button class="good" data-g="2">Good<small>${intervalLabel(p.id, 2)}</small></button>
+        <button class="easy" data-g="3">Easy<small>${intervalLabel(p.id, 3)}</small></button>
+      </div>` : `<button class="reveal-btn" id="reveal">Show answer</button>`}`;
+
+    const reveal = () => {
+      if (revealed) return;
+      revealed = true;
+      renderCard();
+      if (settings.autoplay) tts.speak(p.it);
+    };
+    $("#card").onclick = (e) => { if (!e.target.closest("[data-say]")) reveal(); };
+    const rb = $("#reveal"); if (rb) rb.onclick = reveal;
+    $$("#review-area [data-g]").forEach((b) => b.onclick = () => {
+      const g = Number(b.dataset.g);
+      grade(p.id, g);
+      if (g === 0) queue.push(p); // repeat within this session
+      tts.stop();
+      nextCard();
+    });
+  }
+
+  // ---------- Phrases UI ----------
+  let activeCat = "all";
+  function renderPhrases() {
+    $("#category-list").innerHTML =
+      `<button class="chip ${activeCat === "all" ? "active" : ""}" data-cat="all">All</button>` +
+      CATEGORIES.map((c) => `<button class="chip ${activeCat === c.id ? "active" : ""}" data-cat="${c.id}">${c.emoji} ${c.name}</button>`).join("");
+    $$("#category-list .chip").forEach((b) => b.onclick = () => { activeCat = b.dataset.cat; renderPhrases(); });
+
+    const list = activeCat === "all" ? PHRASES : PHRASES.filter((p) => p.cat === activeCat);
+    $("#phrase-list").innerHTML = list.map((p) => {
+      const s = cardState(p.id);
+      const status = !s ? "Not started" : s.due <= Date.now() ? "Due now" : `Next: ${relTime(s.due)}`;
+      return `<div class="phrase">
+        <div class="txt">
+          <div class="it">${esc(p.it)}</div>
+          <div class="en">${esc(p.en)}</div>
+          ${p.note ? `<div class="note">${esc(p.note)}</div>` : ""}
+          <div class="status">${status}</div>
+        </div>
+        <button class="play-btn small" data-say="${esc(p.it)}" aria-label="Play">🔊</button>
+      </div>`;
+    }).join("");
+  }
+
+  // ---------- Conversations UI ----------
+  let activeConvo = null;
+  let showEn = true;
+  let playing = false;
+  function renderConvos() {
+    if (!activeConvo) {
+      $("#convo-detail").innerHTML = "";
+      $("#convo-list").innerHTML = CONVERSATIONS.map((c) => `
+        <div class="convo-card" data-id="${c.id}">
+          <h3>${esc(c.title)}</h3>
+          <p>${esc(c.where)} · ${c.lines.length} lines</p>
+        </div>`).join("");
+      $$(".convo-card").forEach((el) => el.onclick = () => { activeConvo = el.dataset.id; renderConvos(); });
+      return;
+    }
+    const c = CONVERSATIONS.find((x) => x.id === activeConvo);
+    $("#convo-list").innerHTML = "";
+    $("#convo-detail").innerHTML = `
+      <div class="head">
+        <button class="back-btn" id="convo-back">‹ All</button>
+        <h2>${esc(c.title)}</h2>
+        <button class="play-btn small" id="play-all">${playing ? "⏹ Stop" : "▶ Play all"}</button>
+        <label class="toggle-en"><input type="checkbox" id="toggle-en" ${showEn ? "checked" : ""}> English</label>
+      </div>
+      <p class="muted" style="margin-top:0">${esc(c.where)}. Tap any bubble to hear it.</p>
+      ${c.lines.map((l, i) => `
+        <div class="line ${l.who}">
+          <div class="bubble" data-i="${i}" data-say="${esc(l.it)}">
+            <div class="who">${l.who === "you" ? "You" : "Them"}</div>
+            <div class="it">${esc(l.it)}</div>
+            ${showEn ? `<div class="en">${esc(l.en)}</div>` : ""}
+          </div>
+        </div>`).join("")}`;
+    $("#convo-back").onclick = () => { stopAll(); activeConvo = null; renderConvos(); };
+    $("#toggle-en").onchange = (e) => { showEn = e.target.checked; renderConvos(); };
+    $("#play-all").onclick = () => playing ? stopAll() : playAll(c);
+  }
+  function playAll(c) {
+    playing = true;
+    $("#play-all").textContent = "⏹ Stop";
+    let i = 0;
+    const step = () => {
+      if (!playing || i >= c.lines.length) { stopAll(); return; }
+      const bubble = $(`.bubble[data-i="${i}"]`);
+      $$(".bubble.speaking").forEach((b) => b.classList.remove("speaking"));
+      if (bubble) { bubble.classList.add("speaking"); bubble.scrollIntoView({ block: "center", behavior: "smooth" }); }
+      const text = c.lines[i].it;
+      i += 1;
+      tts.speak(text, { onend: () => setTimeout(step, 500) });
+    };
+    step();
+  }
+  function stopAll() {
+    playing = false;
+    tts.stop();
+    $$(".bubble.speaking").forEach((b) => b.classList.remove("speaking"));
+    const btn = $("#play-all"); if (btn) btn.textContent = "▶ Play all";
+  }
+
+  // ---------- Settings ----------
+  function fillVoiceSelect() {
+    const sel = $("#opt-voice");
+    if (!sel) return;
+    sel.innerHTML = `<option value="">Auto (best available)</option>` +
+      tts.voices.map((v) => `<option value="${esc(v.name)}" ${settings.voice === v.name ? "selected" : ""}>${esc(v.name)}</option>`).join("");
+    $("#voice-status").textContent = !("speechSynthesis" in window)
+      ? "This browser has no speech support."
+      : tts.voices.length ? `${tts.voices.length} Italian voice${tts.voices.length > 1 ? "s" : ""} available.`
+      : "No Italian voice found yet. On iPhone: Settings → Accessibility → Spoken Content → Voices → Italian to download one.";
+  }
+  function openSettings() {
+    $("#opt-direction").value = settings.direction;
+    $("#opt-newperday").value = String(settings.newPerDay);
+    $("#opt-autoplay").checked = !!settings.autoplay;
+    $("#opt-rate").value = String(settings.rate);
+    fillVoiceSelect();
+    $("#settings").hidden = false;
+  }
+  function closeSettings() {
+    settings.direction = $("#opt-direction").value;
+    settings.newPerDay = Number($("#opt-newperday").value);
+    settings.autoplay = $("#opt-autoplay").checked;
+    settings.rate = Number($("#opt-rate").value);
+    settings.voice = $("#opt-voice").value;
+    save();
+    $("#settings").hidden = true;
+    if (currentScreen === "review") startReview();
+  }
+
+  // ---------- Navigation ----------
+  let currentScreen = "review";
+  const titles = { review: "Review", phrases: "Phrases", convos: "Conversations" };
+  function showScreen(name) {
+    stopAll(); tts.stop();
+    currentScreen = name;
+    $$(".screen").forEach((s) => s.classList.toggle("active", s.id === `screen-${name}`));
+    $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.screen === name));
+    $("#screen-title").textContent = titles[name];
+    window.scrollTo(0, 0);
+    if (name === "review") startReview();
+    if (name === "phrases") renderPhrases();
+    if (name === "convos") renderConvos();
+  }
+
+  // ---------- Wire up ----------
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-say]");
+    if (btn && !playing) { e.stopPropagation(); tts.speak(btn.dataset.say); }
+  });
+  $$(".tab").forEach((t) => t.onclick = () => showScreen(t.dataset.screen));
+  $("#settings-btn").onclick = openSettings;
+  $("#close-settings").onclick = closeSettings;
+  $("#settings").addEventListener("click", (e) => { if (e.target.id === "settings") closeSettings(); });
+  $("#reset-progress").onclick = () => {
+    if (confirm("Reset all review progress? This can't be undone.")) {
+      progress = { cards: {}, newLog: {} }; save(); closeSettings();
+    }
+  };
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+  showScreen("review");
+})();
