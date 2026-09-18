@@ -22,9 +22,29 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
+      - uses: actions/setup-node@v4
         with:
-          enablement: true
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Collect text needing audio
+        run: node tools/dump-text.mjs > texts.json
+
+      - name: Restore generated audio
+        uses: actions/cache@v4
+        with:
+          path: audio
+          key: audio-${{ hashFiles('texts.json', 'tools/gen_audio.py') }}
+          restore-keys: audio-
+
+      - name: Generate audio with neural Italian voices
+        run: |
+          pip install --quiet edge-tts
+          python tools/gen_audio.py texts.json
+
+      - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .

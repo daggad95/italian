@@ -6,7 +6,9 @@ ordering coffee and food, asking where the bathroom is, paying, getting directio
 - **Review** — spaced-repetition flashcards (SM-2 style). Progress is saved on your device.
 - **Phrases** — ~140 phrases by category, each with a play button and a short cultural note.
 - **Talk** — reference conversations (bar, restaurant, bill, directions, deli, pharmacy…) with per-line audio and "play all".
-- **Audio** — uses the phone's built-in Italian text-to-speech voice, so it works offline with no API keys.
+- **Audio** — every phrase and conversation line has a recorded clip from a neural Italian voice (Diego or Isabella),
+  generated at deploy time by `tools/gen_audio.py` (edge-tts, no API key). The phone's built-in voice is the fallback.
+  Settings has a one-tap "Download all audio for offline" button.
 
 ## Running it
 
@@ -23,6 +25,17 @@ If the first run fails with a Pages error, enable Pages once in the repo setting
 (Settings → Pages → Source: **GitHub Actions**) and re-run the workflow.
 
 On your phone, open the site in Safari/Chrome and use **Add to Home Screen** to install it as an app.
+
+## Audio
+
+`tools/dump-text.mjs` lists every Italian string in `data.js`; `tools/gen_audio.py` synthesises an MP3 per string
+into `audio/<voice>/<hash>.mp3` plus `audio/manifest.json`. The workflow runs both on each deploy and caches the
+results, so only new strings are synthesised. To run locally:
+
+```
+pip install edge-tts
+node tools/dump-text.mjs > texts.json && python tools/gen_audio.py texts.json
+```
 
 ## Editing content
 
