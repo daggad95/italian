@@ -76,7 +76,17 @@
         </select>
       </label>
       <label class="row">
-        <span>Voice</span>
+        <span>Audio</span>
+        <select id="opt-audio">
+          <option value="diego">Diego (recorded, male)</option>
+          <option value="isabella">Isabella (recorded, female)</option>
+          <option value="device">Phone's built-in voice</option>
+        </select>
+      </label>
+      <p class="muted" id="audio-status"></p>
+      <button id="download-audio" class="secondary" style="width:100%">⬇ Download all audio for offline</button>
+      <label class="row">
+        <span>Fallback device voice</span>
         <select id="opt-voice"></select>
       </label>
       <button id="test-voice" class="secondary" style="width:100%;margin-top:12px">🔊 Test voice</button>

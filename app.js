@@ -5,6 +5,12 @@
   // ---------- Helpers ----------
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
+  const utf8 = new TextEncoder();
+  function hashText(str) {
+    let h = 0x811c9dc5;
+    for (const b of utf8.encode(str)) { h ^= b; h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(16).padStart(8, "0");
+  }
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   function relTime(ts) {
     const diff = ts - Date.now();
@@ -32,7 +38,7 @@
   const LS_SETTINGS = "si.settings.v1";
   const DAY = 24 * 60 * 60 * 1000;
 
-  const defaults = { direction: "en", newPerDay: 10, autoplay: true, rate: 0.85, voice: "" };
+  const defaults = { direction: "en", newPerDay: 10, autoplay: true, rate: 0.85, voice: "", audio: "diego" };
   let settings = load(LS_SETTINGS, defaults);
   // progress: { cards: { id: {ease, interval, due, reps, lapses} }, newLog: { "YYYY-MM-DD": n } }
   let progress = load(LS_PROGRESS, { cards: {}, newLog: {} });
@@ -106,8 +112,52 @@
       }
       return [...this.voices].sort((a, b) => this.quality(b) - this.quality(a))[0] || null;
     },
+    // ---- Recorded neural audio (generated at deploy time, see tools/gen_audio.py) ----
+    manifest: null,        // { diego: [hash...], isabella: [...] } or null if not deployed
+    manifestLoaded: false,
+    player: null,
+    async loadManifest() {
+      try {
+        const r = await fetch("audio/manifest.json", { cache: "no-cache" });
+        this.manifest = r.ok ? await r.json() : null;
+      } catch { this.manifest = null; }
+      this.manifestLoaded = true;
+    },
+    hasClip(text) {
+      const v = settings.audio;
+      return !!(this.manifest && this.manifest[v] && this.manifest[v].includes(hashText(text)));
+    },
+    clipUrl(text) { return `audio/${settings.audio}/${hashText(text)}.mp3`; },
+    speak(text, opts = {}) {
+      if (settings.audio !== "device" && this.hasClip(text)) this.playClip(text, opts);
+      else this.speakDevice(text, opts);
+    },
+    playClip(text, { onend, onstart } = {}) {
+      this.stop();
+      const a = new Audio(this.clipUrl(text));
+      a.setAttribute("playsinline", "");
+      a.playbackRate = Math.min(1.1, Math.max(0.8, (Number(settings.rate) || 0.85) + 0.15));
+      a.preservesPitch = true;
+      if (onstart) a.onplay = onstart;
+      a.onended = () => { if (this.player === a) this.player = null; if (onend) onend(); };
+      a.onerror = () => { if (this.player === a) this.player = null; this.speakDevice(text, { onend, onstart }); };
+      this.player = a;
+      const p = a.play();
+      if (p && p.catch) p.catch(() => this.speakDevice(text, { onend, onstart }));
+    },
+    // Fetch every clip for the chosen voice so the service worker caches it for offline use.
+    async downloadAll(progress) {
+      const list = (this.manifest && this.manifest[settings.audio]) || [];
+      let done = 0;
+      const chunk = 6;
+      for (let i = 0; i < list.length; i += chunk) {
+        await Promise.all(list.slice(i, i + chunk).map((h) =>
+          fetch(`audio/${settings.audio}/${h}.mp3`).then(() => { done += 1; progress(done, list.length); }).catch(() => {})));
+      }
+      return done;
+    },
     current: null, // keep a reference: some engines drop utterances that get garbage-collected
-    speak(text, { onend, onstart } = {}) {
+    speakDevice(text, { onend, onstart } = {}) {
       if (!("speechSynthesis" in window)) { toast("No speech support in this browser"); return; }
       const synth = speechSynthesis;
       primeAudio();
@@ -130,12 +180,17 @@
       // only cancel when something is actually playing, and give it a beat.
       if (synth.speaking || synth.pending) { synth.cancel(); setTimeout(go, 80); } else go();
     },
-    stop() { this.current = null; if ("speechSynthesis" in window) speechSynthesis.cancel(); },
+    stop() {
+      this.current = null;
+      if (this.player) { this.player.onended = null; this.player.onerror = null; this.player.pause(); this.player = null; }
+      if ("speechSynthesis" in window) speechSynthesis.cancel();
+    },
   };
   if ("speechSynthesis" in window) {
     tts.load();
     speechSynthesis.onvoiceschanged = () => tts.load();
   }
+  tts.loadManifest();
 
   // ---------- SRS (SM-2 flavoured) ----------
   function cardState(id) {
@@ -389,8 +444,20 @@
       $("#voice-status").textContent += " For much better audio, download a Premium voice: Settings → Accessibility → Spoken Content → Voices → Italian.";
     }
   }
+  function fillAudioStatus() {
+    const el = $("#audio-status");
+    const m = tts.manifest;
+    if (!tts.manifestLoaded) { el.textContent = "Checking for recorded audio…"; return; }
+    if (!m) { el.textContent = "Recorded audio not available on this copy; using the device voice."; return; }
+    const n = (m[settings.audio] || []).length;
+    el.textContent = settings.audio === "device"
+      ? "Using the phone's built-in voice."
+      : `${n} recorded clips available. Download them once to use offline.`;
+  }
   function openSettings() {
     $("#opt-direction").value = settings.direction;
+    $("#opt-audio").value = settings.audio;
+    fillAudioStatus();
     $("#opt-newperday").value = String(settings.newPerDay);
     $("#opt-autoplay").checked = !!settings.autoplay;
     $("#opt-rate").value = String(settings.rate);
@@ -399,6 +466,7 @@
   }
   function closeSettings() {
     settings.direction = $("#opt-direction").value;
+    settings.audio = $("#opt-audio").value;
     settings.newPerDay = Number($("#opt-newperday").value);
     settings.autoplay = $("#opt-autoplay").checked;
     settings.rate = Number($("#opt-rate").value);
@@ -430,12 +498,23 @@
   });
   $$(".tab").forEach((t) => t.onclick = () => showScreen(t.dataset.screen));
   $("#settings-btn").onclick = openSettings;
+  $("#opt-audio").onchange = (e) => { settings.audio = e.target.value; save(); fillAudioStatus(); };
+  $("#download-audio").onclick = async (e) => {
+    const btn = e.currentTarget;
+    if (!tts.manifest || settings.audio === "device") { toast("No recorded audio to download"); return; }
+    btn.disabled = true;
+    const n = await tts.downloadAll((d, t) => { btn.textContent = `Downloading… ${d}/${t}`; });
+    btn.textContent = `✓ ${n} clips saved for offline`;
+    setTimeout(() => { btn.disabled = false; btn.textContent = "⬇ Download all audio for offline"; }, 4000);
+  };
   $("#test-voice").onclick = () => {
+    const sample = "Buongiorno! Un caffè, per favore.";
     const v = tts.pick();
-    $("#voice-status").textContent = v
-      ? `Playing with: ${tts.label(v)} (${v.lang})…`
+    $("#voice-status").textContent = settings.audio !== "device" && tts.hasClip(sample)
+      ? `Playing recorded clip (${settings.audio})…`
+      : v ? `Playing with device voice: ${tts.label(v)} (${v.lang})…`
       : "No Italian voice reported by this browser; trying default voice…";
-    tts.speak("Buongiorno! Un caffè, per favore.", {
+    tts.speak(sample, {
       onstart: () => { $("#voice-status").textContent += " ▶ speaking"; },
       onend: () => { $("#voice-status").textContent += " ✓ done"; },
     });
