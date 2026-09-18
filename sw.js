@@ -1,6 +1,6 @@
 // Network-first service worker: keeps the app usable offline but always
 // picks up new deploys when online.
-const CACHE = "survival-italian-v5";
+const CACHE = "survival-italian-v6";
 const ASSETS = ["./", "./index.html", "./style.css", "./app.js", "./data.js", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", (e) => {

@@ -32,6 +32,19 @@
       <div id="phrase-list" class="phrase-list"></div>
     </section>
 
+    <!-- Numbers screen -->
+    <section id="screen-numbers" class="screen">
+      <div class="converter">
+        <label for="num-input" class="label">Type any number</label>
+        <div class="converter-row">
+          <input id="num-input" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="e.g. 47" autocomplete="off">
+          <button id="num-play" class="play-btn" aria-label="Play">🔊</button>
+        </div>
+        <div id="num-output" class="num-output"></div>
+      </div>
+      <div id="numbers-ref"></div>
+    </section>
+
     <!-- Conversations screen -->
     <section id="screen-convos" class="screen">
       <div id="convo-list" class="convo-list"></div>
@@ -42,6 +55,7 @@
   <nav class="tabbar">
     <button class="tab active" data-screen="review"><span class="tab-icon">🔁</span>Review<span id="due-badge" class="badge" hidden></span></button>
     <button class="tab" data-screen="phrases"><span class="tab-icon">📖</span>Phrases</button>
+    <button class="tab" data-screen="numbers"><span class="tab-icon">🔢</span>Numbers</button>
     <button class="tab" data-screen="convos"><span class="tab-icon">💬</span>Talk</button>
   </nav>
 
