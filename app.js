@@ -59,15 +59,25 @@
       this.voices = speechSynthesis.getVoices().filter((v) => /^it([-_]|$)/i.test(v.lang));
       fillVoiceSelect();
     },
+    // iOS lists compact and premium variants under the same name; the
+    // voiceURI (e.g. com.apple.voice.premium.it-IT.Alice) tells them apart.
+    quality(v) {
+      const u = (v.voiceURI + " " + v.name).toLowerCase();
+      if (/premium|siri/.test(u)) return 3;
+      if (/enhanced|neural|natural|wavenet/.test(u)) return 2;
+      if (/google/.test(u)) return 1;
+      return 0;
+    },
+    label(v) {
+      const q = this.quality(v);
+      return v.name + (q === 3 ? " (Premium)" : q === 2 ? " (Enhanced)" : "");
+    },
     pick() {
       if (settings.voice) {
-        const v = this.voices.find((v) => v.name === settings.voice);
+        const v = this.voices.find((v) => v.voiceURI === settings.voice);
         if (v) return v;
       }
-      // Prefer higher-quality / well-known voices when present.
-      const pref = [/siri/i, /premium/i, /enhanced/i, /google/i, /alice/i, /federica/i, /luca/i, /elsa/i];
-      for (const re of pref) { const v = this.voices.find((v) => re.test(v.name)); if (v) return v; }
-      return this.voices[0] || null;
+      return [...this.voices].sort((a, b) => this.quality(b) - this.quality(a))[0] || null;
     },
     speak(text, { onend, onstart } = {}) {
       if (!("speechSynthesis" in window)) { toast("No speech support in this browser"); return; }
@@ -326,11 +336,15 @@
     const sel = $("#opt-voice");
     if (!sel) return;
     sel.innerHTML = `<option value="">Auto (best available)</option>` +
-      tts.voices.map((v) => `<option value="${esc(v.name)}" ${settings.voice === v.name ? "selected" : ""}>${esc(v.name)}</option>`).join("");
+      tts.voices.map((v) => `<option value="${esc(v.voiceURI)}" ${settings.voice === v.voiceURI ? "selected" : ""}>${esc(tts.label(v))}</option>`).join("");
     $("#voice-status").textContent = !("speechSynthesis" in window)
       ? "This browser has no speech support."
       : tts.voices.length ? `${tts.voices.length} Italian voice${tts.voices.length > 1 ? "s" : ""} available.`
       : "No Italian voice found yet. On iPhone: Settings → Accessibility → Spoken Content → Voices → Italian to download one.";
+    const best = tts.pick();
+    if (best && tts.quality(best) < 2) {
+      $("#voice-status").textContent += " For much better audio, download a Premium voice: Settings → Accessibility → Spoken Content → Voices → Italian.";
+    }
   }
   function openSettings() {
     $("#opt-direction").value = settings.direction;
