@@ -396,6 +396,50 @@
     out.textContent = words || "Too big — try up to 999 999";
   }
 
+  // ---------- Tap-a-word glossary ----------
+  const WORD_RE = /^([^a-zàèéìòùA-ZÀÈÉÌÒÙ']*)([a-zàèéìòùA-ZÀÈÉÌÒÙ']+)(.*)$/;
+  function wordMarkup(text) {
+    return text.split(/(\s+)/).map((tok) => {
+      if (/^\s*$/.test(tok)) return tok;
+      const m = WORD_RE.exec(tok);
+      if (!m) return esc(tok);
+      const core = m[2].replace(/^'+|'+$/g, "");
+      return `${esc(m[1])}<span class="w" data-w="${esc(core.toLowerCase())}">${esc(m[2])}</span>${esc(m[3])}`;
+    }).join("");
+  }
+  function gloss(word) {
+    const w = word.toLowerCase();
+    if (GLOSSARY[w]) return [{ word: w, meaning: GLOSSARY[w] }];
+    if (w.includes("'")) {
+      const [a, b] = w.split("'");
+      const out = [];
+      if (GLOSSARY[a + "'"]) out.push({ word: a + "'", meaning: GLOSSARY[a + "'"] });
+      else if (GLOSSARY[a]) out.push({ word: a, meaning: GLOSSARY[a] });
+      if (b && GLOSSARY[b]) out.push({ word: b, meaning: GLOSSARY[b] });
+      if (out.length) return out;
+    }
+    return [{ word: w, meaning: "(no entry yet)" }];
+  }
+  function showWord(word, anchor) {
+    const pop = $("#word-pop");
+    const entries = gloss(word);
+    pop.innerHTML = `
+      <div class="wp-head">
+        <div class="wp-word">${esc(word)}</div>
+        <button class="play-btn small" data-say="${esc(word.replace(/'$/, ""))}">🔊</button>
+        <button class="icon-btn wp-close" aria-label="Close">✕</button>
+      </div>
+      ${entries.map((e) => `<div class="wp-entry"><b>${esc(e.word)}</b> ${esc(e.meaning)}</div>`).join("")}`;
+    pop.hidden = false;
+    $$(".w.active").forEach((el) => el.classList.remove("active"));
+    if (anchor) anchor.classList.add("active");
+    pop.querySelector(".wp-close").onclick = hideWord;
+  }
+  function hideWord() {
+    const pop = $("#word-pop");
+    if (!pop.hidden) { pop.hidden = true; $$(".w.active").forEach((el) => el.classList.remove("active")); }
+  }
+
   // ---------- Conversations UI ----------
   let activeConvo = null;
   let showEn = true;
@@ -420,12 +464,12 @@
         <button class="play-btn small" id="play-all">${playing ? "⏹ Stop" : "▶ Play all"}</button>
         <label class="toggle-en"><input type="checkbox" id="toggle-en" ${showEn ? "checked" : ""}> English</label>
       </div>
-      <p class="muted" style="margin-top:0">${esc(c.where)}. Tap any bubble to hear it.</p>
+      <p class="muted" style="margin-top:0">${esc(c.where)}. Tap a bubble to hear it, tap a word for its meaning.</p>
       ${c.lines.map((l, i) => `
         <div class="line ${l.who === "them" ? "them" : "you"} ${l.who !== "you" && l.who !== "them" ? "other" : ""}">
           <div class="bubble" data-i="${i}" data-say="${esc(l.it)}">
-            <div class="who">${esc(l.name || (l.who === "you" ? "You" : l.who === "them" ? "Them" : l.who))}</div>
-            <div class="it">${esc(l.it)}</div>
+            <div class="who">${esc(l.name || (l.who === "you" ? "You" : l.who === "them" ? "Them" : l.who))} <span class="spk">🔊</span></div>
+            <div class="it">${wordMarkup(l.it)}</div>
             ${showEn ? `<div class="en">${esc(l.en)}</div>` : ""}
           </div>
         </div>`).join("")}`;
@@ -510,7 +554,7 @@
   let currentScreen = "review";
   const titles = { review: "Review", phrases: "Phrases", numbers: "Numbers", convos: "Conversations" };
   function showScreen(name) {
-    stopAll(); tts.stop();
+    stopAll(); tts.stop(); hideWord();
     currentScreen = name;
     $$(".screen").forEach((s) => s.classList.toggle("active", s.id === `screen-${name}`));
     $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.screen === name));
@@ -524,6 +568,9 @@
 
   // ---------- Wire up ----------
   document.addEventListener("click", (e) => {
+    const w = e.target.closest(".w[data-w]");
+    if (w) { e.stopPropagation(); showWord(w.dataset.w, w); return; }
+    if (!e.target.closest("#word-pop")) hideWord();
     const btn = e.target.closest("[data-say]");
     if (btn && !playing) { e.stopPropagation(); tts.speak(btn.dataset.say); }
   });
