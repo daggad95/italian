@@ -79,19 +79,30 @@
       }
       return [...this.voices].sort((a, b) => this.quality(b) - this.quality(a))[0] || null;
     },
+    current: null, // keep a reference: some engines drop utterances that get garbage-collected
     speak(text, { onend, onstart } = {}) {
       if (!("speechSynthesis" in window)) { toast("No speech support in this browser"); return; }
-      speechSynthesis.cancel();
+      const synth = speechSynthesis;
+      if (!this.voices.length) this.load(); // iOS populates voices lazily
       const u = new SpeechSynthesisUtterance(text);
       u.lang = "it-IT";
       const v = this.pick();
       if (v) u.voice = v;
       u.rate = Number(settings.rate) || 0.85;
+      u.volume = 1;
       if (onstart) u.onstart = onstart;
-      if (onend) { u.onend = onend; u.onerror = onend; }
-      speechSynthesis.speak(u);
+      u.onend = () => { if (this.current === u) this.current = null; if (onend) onend(); };
+      u.onerror = (e) => {
+        if (e.error !== "interrupted" && e.error !== "canceled") toast("Audio error: " + (e.error || "unknown"));
+        if (onend) onend();
+      };
+      this.current = u;
+      const go = () => { if (synth.paused) synth.resume(); synth.speak(u); };
+      // Safari on iOS silently drops an utterance queued right after cancel();
+      // only cancel when something is actually playing, and give it a beat.
+      if (synth.speaking || synth.pending) { synth.cancel(); setTimeout(go, 80); } else go();
     },
-    stop() { if ("speechSynthesis" in window) speechSynthesis.cancel(); },
+    stop() { this.current = null; if ("speechSynthesis" in window) speechSynthesis.cancel(); },
   };
   if ("speechSynthesis" in window) {
     tts.load();
@@ -387,6 +398,16 @@
   });
   $$(".tab").forEach((t) => t.onclick = () => showScreen(t.dataset.screen));
   $("#settings-btn").onclick = openSettings;
+  $("#test-voice").onclick = () => {
+    const v = tts.pick();
+    $("#voice-status").textContent = v
+      ? `Playing with: ${tts.label(v)} (${v.lang})…`
+      : "No Italian voice reported by this browser; trying default voice…";
+    tts.speak("Buongiorno! Un caffè, per favore.", {
+      onstart: () => { $("#voice-status").textContent += " ▶ speaking"; },
+      onend: () => { $("#voice-status").textContent += " ✓ done"; },
+    });
+  };
   $("#close-settings").onclick = closeSettings;
   $("#settings").addEventListener("click", (e) => { if (e.target.id === "settings") closeSettings(); });
   $("#reset-progress").onclick = () => {
