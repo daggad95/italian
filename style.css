@@ -124,6 +124,17 @@ button { font: inherit; color: inherit; }
 .empty button { margin-top: 16px; }
 
 /* Phrases */
+.search-row { position: relative; margin-bottom: 10px; }
+.search-row input {
+  width: 100%; font: inherit; font-size: 16px; padding: 11px 40px 11px 14px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text);
+  -webkit-appearance: none; appearance: none;
+}
+.search-row input::-webkit-search-cancel-button { display: none; }
+.search-row .icon-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 16px; color: var(--muted); }
+.search-row .icon-btn[hidden] { display: none; }
+.phrase mark { background: #ffe58a; color: inherit; border-radius: 3px; padding: 0 1px; }
+@media (prefers-color-scheme: dark) { .phrase mark { background: #7a5c00; } }
 .category-list { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin: 0 -16px 8px; padding-left: 16px; padding-right: 16px; scrollbar-width: none; }
 .category-list::-webkit-scrollbar { display: none; }
 .chip {

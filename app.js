@@ -344,22 +344,46 @@
 
   // ---------- Phrases UI ----------
   let activeCat = "all";
+  let searchQuery = "";
+  // Accent-insensitive: "caffe" matches "caffè", "piu" matches "più".
+  const fold = (str) => str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  function highlight(text, q) {
+    if (!q) return esc(text);
+    // Match on the folded string, then map the hit back onto the original (same length per char).
+    const f = fold(text), fq = fold(q);
+    let out = "", i = 0, idx;
+    while ((idx = f.indexOf(fq, i)) !== -1) {
+      out += esc(text.slice(i, idx)) + "<mark>" + esc(text.slice(idx, idx + fq.length)) + "</mark>";
+      i = idx + fq.length;
+    }
+    return out + esc(text.slice(i));
+  }
   function renderPhrases() {
     $("#category-list").innerHTML =
       `<button class="chip ${activeCat === "all" ? "active" : ""}" data-cat="all">All</button>` +
       CATEGORIES.map((c) => `<button class="chip ${activeCat === c.id ? "active" : ""}" data-cat="${c.id}">${c.emoji} ${c.name}</button>`).join("");
     $$("#category-list .chip").forEach((b) => b.onclick = () => { activeCat = b.dataset.cat; renderPhrases(); });
 
-    const list = activeCat === "all" ? PHRASES : PHRASES.filter((p) => p.cat === activeCat);
+    const q = searchQuery.trim();
+    const fq = fold(q);
+    let list = activeCat === "all" ? PHRASES : PHRASES.filter((p) => p.cat === activeCat);
+    if (fq) list = list.filter((p) => fold(p.en).includes(fq) || fold(p.it).includes(fq) || (p.note && fold(p.note).includes(fq)));
+    $("#phrase-search-clear").hidden = !q;
+
+    if (!list.length) {
+      $("#phrase-list").innerHTML = `<div class="empty"><h3>No matches</h3><p>Try a different word${activeCat !== "all" ? ", or switch to All categories" : ""}.</p></div>`;
+      return;
+    }
     $("#phrase-list").innerHTML = list.map((p) => {
       const s = cardState(p.id);
       const status = !s ? "Not started" : s.due <= Date.now() ? "Due now" : `Next: ${relTime(s.due)}`;
+      const cat = catById[p.cat];
       return `<div class="phrase">
         <div class="txt">
-          <div class="it">${esc(p.it)}</div>
-          <div class="en">${esc(p.en)}</div>
-          ${p.note ? `<div class="note">${esc(p.note)}</div>` : ""}
-          <div class="status">${status}</div>
+          <div class="it">${highlight(p.it, q)}</div>
+          <div class="en">${highlight(p.en, q)}</div>
+          ${p.note ? `<div class="note">${highlight(p.note, q)}</div>` : ""}
+          <div class="status">${activeCat === "all" ? `${cat.emoji} ${esc(cat.name)} · ` : ""}${status}</div>
         </div>
         <button class="play-btn small" data-say="${esc(p.it)}" aria-label="Play">🔊</button>
       </div>`;
@@ -575,6 +599,9 @@
     if (btn && !playing) { e.stopPropagation(); tts.speak(btn.dataset.say); }
   });
   $$(".tab").forEach((t) => t.onclick = () => showScreen(t.dataset.screen));
+  $("#phrase-search").addEventListener("input", (e) => { searchQuery = e.target.value; renderPhrases(); });
+  $("#phrase-search").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
+  $("#phrase-search-clear").onclick = () => { searchQuery = ""; $("#phrase-search").value = ""; renderPhrases(); };
   $("#num-input").addEventListener("input", updateConverter);
   $("#num-play").onclick = () => { const w = numberToItalian($("#num-input").value.replace(/[^0-9]/g, "")); if (w) tts.speak(w); };
   $("#num-input").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#num-play").click(); $("#num-input").blur(); } });
