@@ -165,6 +165,22 @@ button { font: inherit; color: inherit; }
 .bubble .it { font-size: 17px; font-weight: 600; }
 .bubble .en { font-size: 13px; color: var(--muted); margin-top: 3px; }
 .bubble.speaking { outline: 2px solid var(--green); }
+.bubble .who .spk { margin-left: 4px; }
+.bubble .it .w { border-bottom: 1px dotted var(--muted); cursor: pointer; padding-bottom: 1px; }
+.bubble .it .w.active { background: var(--green); color: #fff; border-radius: 4px; border-bottom-color: transparent; }
+
+/* Tap-a-word popover */
+.word-pop[hidden] { display: none; }
+.word-pop {
+  position: fixed; left: 12px; right: 12px; bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px); z-index: 8;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.18);
+}
+.wp-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.wp-word { font-size: 20px; font-weight: 700; flex: 1; }
+.wp-close { font-size: 18px; }
+.wp-entry { font-size: 15px; line-height: 1.4; padding: 4px 0; }
+.wp-entry b { color: var(--green); margin-right: 6px; }
 .toggle-en { font-size: 13px; }
 
 /* Settings sheet */
