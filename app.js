@@ -52,11 +52,30 @@
   const phraseById = Object.fromEntries(PHRASES.map((p) => [p.id, p]));
 
   // ---------- TTS ----------
+  // iOS mutes speech synthesis with the ring/silent switch unless the page is
+  // in "playback" audio mode (what music apps use). Ask for it via the
+  // AudioSession API where available, and also play a short silent clip
+  // before speaking, which flips older versions into playback mode.
+  const SILENT_WAV = "data:audio/wav;base64,UklGRvQHAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YdAHAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";
+  let unlockAudio = null;
+  function setupAudioSession() {
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch { /* ignore */ }
+    unlockAudio = new Audio(SILENT_WAV);
+    unlockAudio.setAttribute("playsinline", "");
+    unlockAudio.preload = "auto";
+  }
+  function primeAudio() {
+    if (!unlockAudio) setupAudioSession();
+    try { unlockAudio.currentTime = 0; const p = unlockAudio.play(); if (p && p.catch) p.catch(() => {}); } catch { /* ignore */ }
+  }
+
   const tts = {
     voices: [],
+    allVoices: [],
     load() {
       if (!("speechSynthesis" in window)) return;
-      this.voices = speechSynthesis.getVoices().filter((v) => /^it([-_]|$)/i.test(v.lang));
+      this.allVoices = speechSynthesis.getVoices();
+      this.voices = this.allVoices.filter((v) => /^it([-_]|$)/i.test(v.lang));
       fillVoiceSelect();
     },
     // iOS lists compact and premium variants under the same name; the
@@ -70,11 +89,19 @@
     },
     label(v) {
       const q = this.quality(v);
-      return v.name + (q === 3 ? " (Premium)" : q === 2 ? " (Enhanced)" : "");
+      let tag = q === 3 ? "Premium" : q === 2 ? "Enhanced" : "";
+      // Fall back to the distinguishing part of the voice id so two voices
+      // with the same name (e.g. compact vs downloaded "Alice") stay tellable.
+      if (!tag) {
+        const m = /voice\.([a-z]+)\./i.exec(v.voiceURI || "");
+        if (m && m[1].toLowerCase() !== "compact") tag = m[1];
+        else if (this.voices.filter((o) => o.name === v.name).length > 1) tag = "standard";
+      }
+      return v.name + (tag ? ` (${tag})` : "") + (v.localService === false ? " · online" : "");
     },
     pick() {
       if (settings.voice) {
-        const v = this.voices.find((v) => v.voiceURI === settings.voice);
+        const v = this.allVoices.find((v) => v.voiceURI === settings.voice);
         if (v) return v;
       }
       return [...this.voices].sort((a, b) => this.quality(b) - this.quality(a))[0] || null;
@@ -83,6 +110,7 @@
     speak(text, { onend, onstart } = {}) {
       if (!("speechSynthesis" in window)) { toast("No speech support in this browser"); return; }
       const synth = speechSynthesis;
+      primeAudio();
       if (!this.voices.length) this.load(); // iOS populates voices lazily
       const u = new SpeechSynthesisUtterance(text);
       u.lang = "it-IT";
@@ -346,8 +374,12 @@
   function fillVoiceSelect() {
     const sel = $("#opt-voice");
     if (!sel) return;
+    tts.load(); // voices can appear after a download while the page is open
+    const opt = (v) => `<option value="${esc(v.voiceURI)}" ${settings.voice === v.voiceURI ? "selected" : ""}>${esc(tts.label(v))}${/^it/i.test(v.lang) ? "" : ` [${esc(v.lang)}]`}</option>`;
+    const others = tts.allVoices.filter((v) => !tts.voices.includes(v));
     sel.innerHTML = `<option value="">Auto (best available)</option>` +
-      tts.voices.map((v) => `<option value="${esc(v.voiceURI)}" ${settings.voice === v.voiceURI ? "selected" : ""}>${esc(tts.label(v))}</option>`).join("");
+      `<optgroup label="Italian">${tts.voices.map(opt).join("")}</optgroup>` +
+      (others.length ? `<optgroup label="Other languages">${others.map(opt).join("")}</optgroup>` : "");
     $("#voice-status").textContent = !("speechSynthesis" in window)
       ? "This browser has no speech support."
       : tts.voices.length ? `${tts.voices.length} Italian voice${tts.voices.length > 1 ? "s" : ""} available.`
@@ -416,6 +448,8 @@
     }
   };
 
+  setupAudioSession();
+  document.addEventListener("touchend", primeAudio, { once: true, passive: true });
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
