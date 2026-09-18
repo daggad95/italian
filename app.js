@@ -72,12 +72,12 @@
   const tts = {
     voices: [],
     allVoices: [],
-    load() {
+    refresh() {
       if (!("speechSynthesis" in window)) return;
       this.allVoices = speechSynthesis.getVoices();
       this.voices = this.allVoices.filter((v) => /^it([-_]|$)/i.test(v.lang));
-      fillVoiceSelect();
     },
+    load() { this.refresh(); fillVoiceSelect(); },
     // iOS lists compact and premium variants under the same name; the
     // voiceURI (e.g. com.apple.voice.premium.it-IT.Alice) tells them apart.
     quality(v) {
@@ -111,7 +111,7 @@
       if (!("speechSynthesis" in window)) { toast("No speech support in this browser"); return; }
       const synth = speechSynthesis;
       primeAudio();
-      if (!this.voices.length) this.load(); // iOS populates voices lazily
+      if (!this.voices.length) this.refresh(); // iOS populates voices lazily
       const u = new SpeechSynthesisUtterance(text);
       u.lang = "it-IT";
       const v = this.pick();
@@ -374,7 +374,7 @@
   function fillVoiceSelect() {
     const sel = $("#opt-voice");
     if (!sel) return;
-    tts.load(); // voices can appear after a download while the page is open
+    tts.refresh(); // voices can appear after a download while the page is open
     const opt = (v) => `<option value="${esc(v.voiceURI)}" ${settings.voice === v.voiceURI ? "selected" : ""}>${esc(tts.label(v))}${/^it/i.test(v.lang) ? "" : ` [${esc(v.lang)}]`}</option>`;
     const others = tts.allVoices.filter((v) => !tts.voices.includes(v));
     sel.innerHTML = `<option value="">Auto (best available)</option>` +
