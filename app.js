@@ -422,9 +422,9 @@
       </div>
       <p class="muted" style="margin-top:0">${esc(c.where)}. Tap any bubble to hear it.</p>
       ${c.lines.map((l, i) => `
-        <div class="line ${l.who}">
+        <div class="line ${l.who === "them" ? "them" : "you"} ${l.who !== "you" && l.who !== "them" ? "other" : ""}">
           <div class="bubble" data-i="${i}" data-say="${esc(l.it)}">
-            <div class="who">${l.who === "you" ? "You" : "Them"}</div>
+            <div class="who">${esc(l.name || (l.who === "you" ? "You" : l.who === "them" ? "Them" : l.who))}</div>
             <div class="it">${esc(l.it)}</div>
             ${showEn ? `<div class="en">${esc(l.en)}</div>` : ""}
           </div>

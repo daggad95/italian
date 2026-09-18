@@ -160,6 +160,7 @@ button { font: inherit; color: inherit; }
 }
 .line.you .bubble { background: var(--green-soft); border-color: transparent; border-bottom-left-radius: 4px; }
 .line.them .bubble { border-bottom-right-radius: 4px; }
+.line.other .bubble { background: var(--card); border-left: 3px solid var(--green); border-bottom-left-radius: 4px; }
 .bubble .who { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; }
 .bubble .it { font-size: 17px; font-weight: 600; }
 .bubble .en { font-size: 13px; color: var(--muted); margin-top: 3px; }
