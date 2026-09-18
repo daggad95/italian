@@ -303,3 +303,80 @@ const CONVERSATIONS = [
     ],
   },
 ];
+
+// ---- Numbers reference ----
+// Shared by the app (Numbers tab) and tools/dump-text.mjs (so clips get generated).
+function numberToItalian(n) {
+  n = Math.floor(Math.abs(Number(n)));
+  if (!Number.isFinite(n) || n > 999999) return "";
+  const units = ["zero", "uno", "due", "tre", "quattro", "cinque", "sei", "sette", "otto", "nove", "dieci",
+    "undici", "dodici", "tredici", "quattordici", "quindici", "sedici", "diciassette", "diciotto", "diciannove"];
+  const tens = ["", "", "venti", "trenta", "quaranta", "cinquanta", "sessanta", "settanta", "ottanta", "novanta"];
+  const below100 = (x) => {
+    if (x < 20) return units[x];
+    const t = tens[Math.floor(x / 10)], u = x % 10;
+    if (u === 0) return t;
+    if (u === 1 || u === 8) return t.slice(0, -1) + units[u]; // ventuno, ventotto
+    if (u === 3) return t + "tré";                             // ventitré
+    return t + units[u];
+  };
+  const below1000 = (x) => {
+    if (x < 100) return below100(x);
+    const h = Math.floor(x / 100), r = x % 100;
+    let s = h === 1 ? "cento" : units[h] + "cento";
+    if (r === 0) return s;
+    const rest = below100(r);
+    if (rest.startsWith("o")) s = s.slice(0, -1); // centotto, centottanta
+    return s + rest;
+  };
+  if (n < 1000) return below1000(n);
+  const k = Math.floor(n / 1000), r = n % 1000;
+  const head = k === 1 ? "mille" : below1000(k) + "mila";
+  return r === 0 ? head : head + below1000(r);
+}
+
+const NUMBER_SECTIONS = [
+  { title: "0 – 20", note: "Learn these cold; everything else is built from them.", rows: [...Array(21).keys()] },
+  { title: "Tens", note: "Drop the final vowel before uno and otto: ventuno, ventotto. Add an accent on tre: ventitré.",
+    rows: [20, 21, 22, 23, 28, 30, 40, 50, 60, 70, 80, 90] },
+  { title: "Hundreds", note: "Cento never changes; just stick the rest on the end: centocinquanta.", rows: [100, 101, 108, 150, 200, 300, 500, 999] },
+  { title: "Thousands", note: "Mille for one thousand, -mila for more: duemila, diecimila.", rows: [1000, 1500, 2000, 10000] },
+];
+
+const NUMBER_EXAMPLES = [
+  { title: "Prices", note: "Euro + e + cents. One euro is 'un euro'. Cents alone are centesimi.", rows: [
+    { label: "€0,80", it: "ottanta centesimi" },
+    { label: "€1,20", it: "un euro e venti" },
+    { label: "€2,50", it: "due euro e cinquanta" },
+    { label: "€4,90", it: "quattro euro e novanta" },
+    { label: "€15", it: "quindici euro" },
+    { label: "€32,50", it: "trentadue euro e cinquanta" },
+  ] },
+  { title: "Time", note: "Hours are plural (le due) except one o'clock (l'una). 'e mezza' = half past, 'meno' = to.", rows: [
+    { label: "1:00", it: "l'una" },
+    { label: "2:00", it: "le due" },
+    { label: "3:30", it: "le tre e mezza" },
+    { label: "8:15", it: "le otto e un quarto" },
+    { label: "8:45", it: "le nove meno un quarto" },
+    { label: "12:00", it: "mezzogiorno" },
+    { label: "20:30", it: "le otto e mezza di sera" },
+    { label: "at 8", it: "alle otto" },
+  ] },
+  { title: "Quantities", note: "What you'll actually say at counters.", rows: [
+    { label: "for 2", it: "per due" },
+    { label: "2 tickets", it: "due biglietti" },
+    { label: "100 g", it: "un etto" },
+    { label: "200 g", it: "due etti" },
+    { label: "half a kilo", it: "mezzo chilo" },
+    { label: "a quarter (wine)", it: "un quarto" },
+    { label: "half a litre", it: "mezzo litro" },
+  ] },
+];
+
+// Strings that need recorded audio beyond PHRASES / CONVERSATIONS.
+const AUDIO_EXTRA = [
+  ...[...Array(101).keys()].map(numberToItalian),
+  ...[200, 300, 400, 500, 600, 700, 800, 900, 1000, 2000, 10000].map(numberToItalian),
+  ...NUMBER_SECTIONS.flatMap((s) => s.rows.map(numberToItalian)),
+  ...NUMBER_EXAMPLES.flatMap((s) => s.rows.map((r) => r.it)),
+];

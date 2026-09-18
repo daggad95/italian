@@ -366,6 +366,36 @@
     }).join("");
   }
 
+  // ---------- Numbers UI ----------
+  function renderNumbers() {
+    const row = (label, it, wide) => `
+      <div class="num-row" data-say="${esc(it)}">
+        <span class="n">${esc(label)}</span><span class="w">${esc(it)}</span><span class="s">🔊</span>
+      </div>`;
+    $("#numbers-ref").innerHTML =
+      NUMBER_SECTIONS.map((sec) => `
+        <div class="num-section">
+          <h3>${esc(sec.title)}</h3>
+          <p class="note">${esc(sec.note)}</p>
+          <div class="num-grid">${sec.rows.map((n) => row(n.toLocaleString("it-IT"), numberToItalian(n))).join("")}</div>
+        </div>`).join("") +
+      NUMBER_EXAMPLES.map((sec) => `
+        <div class="num-section">
+          <h3>${esc(sec.title)}</h3>
+          <p class="note">${esc(sec.note)}</p>
+          <div class="num-grid wide">${sec.rows.map((r) => row(r.label, r.it)).join("")}</div>
+        </div>`).join("");
+    updateConverter();
+  }
+  function updateConverter() {
+    const raw = $("#num-input").value.replace(/[^0-9]/g, "");
+    const out = $("#num-output");
+    if (!raw) { out.textContent = "0 – 999 999"; out.classList.add("empty"); return; }
+    const words = numberToItalian(raw);
+    out.classList.remove("empty");
+    out.textContent = words || "Too big — try up to 999 999";
+  }
+
   // ---------- Conversations UI ----------
   let activeConvo = null;
   let showEn = true;
@@ -478,7 +508,7 @@
 
   // ---------- Navigation ----------
   let currentScreen = "review";
-  const titles = { review: "Review", phrases: "Phrases", convos: "Conversations" };
+  const titles = { review: "Review", phrases: "Phrases", numbers: "Numbers", convos: "Conversations" };
   function showScreen(name) {
     stopAll(); tts.stop();
     currentScreen = name;
@@ -488,6 +518,7 @@
     window.scrollTo(0, 0);
     if (name === "review") startReview();
     if (name === "phrases") renderPhrases();
+    if (name === "numbers") renderNumbers();
     if (name === "convos") renderConvos();
   }
 
@@ -497,6 +528,9 @@
     if (btn && !playing) { e.stopPropagation(); tts.speak(btn.dataset.say); }
   });
   $$(".tab").forEach((t) => t.onclick = () => showScreen(t.dataset.screen));
+  $("#num-input").addEventListener("input", updateConverter);
+  $("#num-play").onclick = () => { const w = numberToItalian($("#num-input").value.replace(/[^0-9]/g, "")); if (w) tts.speak(w); };
+  $("#num-input").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#num-play").click(); $("#num-input").blur(); } });
   $("#settings-btn").onclick = openSettings;
   $("#opt-audio").onchange = (e) => { settings.audio = e.target.value; save(); fillAudioStatus(); };
   $("#download-audio").onclick = async (e) => {

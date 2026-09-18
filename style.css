@@ -181,3 +181,27 @@ button { font: inherit; color: inherit; }
 .primary { width: 100%; margin-top: 12px; padding: 14px; border: none; border-radius: 12px; background: var(--green); color: #fff; font-weight: 700; font-size: 16px; }
 .danger { width: 100%; margin-top: 16px; padding: 12px; border: 1px solid var(--red); border-radius: 12px; background: none; color: var(--red); font-weight: 600; }
 .secondary { padding: 10px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); cursor: pointer; }
+
+/* Numbers */
+.converter { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 18px; }
+.converter .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.converter-row { display: flex; gap: 10px; margin-top: 8px; align-items: stretch; }
+.converter-row input {
+  flex: 1; min-width: 0; font: inherit; font-size: 24px; font-weight: 600; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text);
+}
+.converter-row .play-btn { font-size: 22px; padding: 0 18px; }
+.num-output { font-size: 24px; font-weight: 600; color: var(--green); margin-top: 12px; min-height: 30px; word-break: break-word; }
+.num-output.empty { color: var(--muted); font-size: 14px; font-weight: 400; }
+.num-section { margin-bottom: 20px; }
+.num-section h3 { margin: 0 0 4px; font-size: 17px; }
+.num-section .note { font-size: 13px; color: var(--muted); margin: 0 0 8px; }
+.num-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.num-row {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; min-width: 0;
+}
+.num-row .n { font-weight: 700; font-size: 15px; color: var(--muted); flex: none; min-width: 34px; }
+.num-row .w { flex: 1; min-width: 0; font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
+.num-row .s { flex: none; color: var(--green); }
+.num-grid.wide { grid-template-columns: 1fr; }
